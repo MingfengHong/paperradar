@@ -1,0 +1,36 @@
+channels:
+  feishu:
+    enabled: false
+    webhook_url: ''
+  email:
+    enabled: false
+    from: ''
+    password: ''
+    to: ''
+    smtp_server: ''
+    smtp_port: 587
+  dingtalk:
+    enabled: false
+    webhook_url: ''
+  wework:
+    enabled: false
+    webhook_url: ''
+    msg_type: markdown
+  generic:
+    enabled: false
+    webhook_url: ''
+  telegram:
+    enabled: false
+    bot_token: ''
+    chat_id: ''
+  ntfy:
+    enabled: false
+    server_url: https://ntfy.sh
+    topic: ''
+    token: ''
+  bark:
+    enabled: false
+    url: ''
+  slack:
+    enabled: false
+    webhook_url: ''

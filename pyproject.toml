@@ -1,0 +1,28 @@
+[project]
+name = "paperradar"
+version = "0.1.0"
+description = "PaperRadar - personalized paper recommendation, arXiv/journal RSS tracking, reports, and notifications"
+readme = "README.md"
+requires-python = ">=3.12"
+license = { text = "AGPL-3.0-only" }
+authors = [{ name = "PaperRadar Contributors" }]
+dependencies = [
+    "feedparser>=6.0.11",
+    "python-dotenv>=1.0.1",
+    "PyYAML>=6.0.2",
+    "requests>=2.32.3",
+]
+
+[project.scripts]
+paperradar = "paperradar.cli:main"
+
+[build-system]
+requires = ["hatchling>=1.25.0"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["paperradar"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]

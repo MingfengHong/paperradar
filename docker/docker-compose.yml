@@ -1,0 +1,15 @@
+services:
+  paperradar:
+    build:
+      context: ..
+      dockerfile: Dockerfile
+    working_dir: /app
+    command: paperradar schedule daemon --interval ${PAPERRADAR_INTERVAL:-1800}
+    ports:
+      - "127.0.0.1:${PAPERRADAR_WEB_PORT:-8766}:8766"
+    volumes:
+      - ../config:/app/config
+      - ../data:/app/data
+      - ../output:/app/output
+    env_file:
+      - ../.env

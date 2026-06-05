@@ -1,0 +1,13 @@
+topics:
+- id: default
+  name: My Research Topic
+  research_question: Personalized literature monitoring for my current research topic
+  keywords:
+  - large language model
+  - scientific literature
+  - recommendation
+  exclude_keywords: []
+  venues: []
+  reading_goal: Find papers worth reading without being overwhelmed
+  status: active
+  library_tags: []

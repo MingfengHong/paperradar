@@ -1,0 +1,1 @@
+"""PaperRadar Web UI."""

@@ -1,0 +1,48 @@
+app:
+  timezone: Asia/Shanghai
+  database: data/paperradar.db
+  output_dir: output
+  web_host: 127.0.0.1
+  web_port: 8766
+llm:
+  enabled: false
+  api_type: openai_chat
+  base_url: https://api.openai.com/v1
+  model: gpt-4o-mini
+sources:
+  openalex:
+    enabled: true
+  crossref:
+    enabled: true
+    email: ''
+  arxiv:
+    enabled: true
+  journal_rss:
+    enabled: true
+ranking:
+  library_similarity:
+    enabled: true
+    mode: lexical
+    time_decay: true
+    min_related_score: 0.18
+  embedding:
+    enabled: false
+    base_url: https://api.openai.com/v1
+    model: text-embedding-3-small
+    batch_size: 64
+  classifiers:
+  - survey
+  - benchmark
+  - method
+  - system
+  - dataset
+  - application
+  - theory
+  - evaluation
+  - tooling
+  - other
+  llm_candidate_limit: 32
+  llm_analysis:
+    enabled: true
+    language: Chinese
+    max_papers: 12

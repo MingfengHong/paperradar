@@ -1,0 +1,9 @@
+zotero:
+  enabled: false
+  user_id: ''
+  group_id: ''
+  api_key: ''
+  collections: []
+  tags: []
+  include_path: []
+  ignore_path: []

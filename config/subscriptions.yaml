@@ -1,0 +1,42 @@
+subscriptions:
+- id: daily-paper-digest
+  topic_id: default
+  type: paper
+  enabled: true
+  report_modules:
+  - paper_digest
+  - fresh_updates
+  schedule: manual
+  max_papers: 8
+  min_score: 0.55
+  channels: []
+  source:
+    query: large language model scientific literature recommendation
+- id: arxiv-ai
+  topic_id: default
+  type: arxiv
+  enabled: false
+  report_modules:
+  - fresh_updates
+  schedule: manual
+  max_papers: 8
+  min_score: 0.55
+  channels: []
+  source:
+    categories:
+    - cs.AI
+    - cs.CL
+    query: ''
+    mode: daily_window
+- id: journal-rss-demo
+  topic_id: default
+  type: journal_rss
+  enabled: false
+  report_modules:
+  - fresh_updates
+  schedule: manual
+  max_papers: 8
+  min_score: 0.55
+  channels: []
+  source:
+    feeds: []
