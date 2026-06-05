@@ -10,7 +10,7 @@ from .models import RunResult, Subscription, Topic
 from .notifications import send_report
 from .ranking import prefilter_for_llm
 from .recommender import recommend
-from .reports import generate_report, save_report
+from .reports import attach_public_report_link, generate_report, public_report_url, save_report
 from .sources import fetch_arxiv, fetch_journal_rss, fetch_scholarly
 from .storage import Storage
 
@@ -57,11 +57,14 @@ class Runner:
             report_markdown=report_markdown,
             report_html=report_html,
         )
+        report_url = public_report_url(self.config.public_base_url, result.run_id)
+        if report_url:
+            result.report_markdown, result.report_html = attach_public_report_link(result.report_markdown, result.report_html, report_url)
         save_report(result, self.config.output_dir)
         self.storage.save_run(result)
         pushed = [rec.paper for rec in recommendations if not rec.filtered]
         if not no_push:
-            send_report(self.config.notifications, subscription.channels, f"PaperRadar：{topic.name}", report_markdown, report_html)
+            send_report(self.config.notifications, subscription.channels, f"PaperRadar: {topic.name}", result.report_markdown, result.report_html)
             self.storage.mark_pushed(subscription.id, pushed)
         return result
 

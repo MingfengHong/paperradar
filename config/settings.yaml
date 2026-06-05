@@ -2,6 +2,7 @@ app:
   timezone: Asia/Shanghai
   database: data/paperradar.db
   output_dir: output
+  public_base_url: ''
   web_host: 127.0.0.1
   web_port: 8766
 llm:

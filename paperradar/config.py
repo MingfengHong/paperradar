@@ -18,6 +18,7 @@ DEFAULT_SETTINGS = {
         "timezone": "Asia/Shanghai",
         "database": "data/paperradar.db",
         "output_dir": "output",
+        "public_base_url": "",
         "web_host": "127.0.0.1",
         "web_port": 8766,
     },
@@ -196,6 +197,10 @@ class AppConfig:
         self._apply_env_overrides()
 
     def _apply_env_overrides(self) -> None:
+        app = self.settings.setdefault("app", {})
+        if os.getenv("PAPERRADAR_PUBLIC_BASE_URL"):
+            app["public_base_url"] = os.getenv("PAPERRADAR_PUBLIC_BASE_URL")
+
         llm = self.settings.setdefault("llm", {})
         if os.getenv("LLM_API_KEY"):
             llm["api_key"] = os.getenv("LLM_API_KEY")
@@ -276,6 +281,10 @@ class AppConfig:
         out = self.settings.get("app", {}).get("output_dir", "output")
         return (self.root / out).resolve()
 
+    @property
+    def public_base_url(self) -> str:
+        return str(self.settings.get("app", {}).get("public_base_url") or "").strip().rstrip("/")
+
     def topics(self) -> list[Topic]:
         return [Topic.from_dict(item) for item in self.topics_raw.get("topics", [])]
 
@@ -301,7 +310,7 @@ def init_project(root: Path | str = ".") -> list[Path]:
         path = root_path / "config" / filename
         if write_yaml_if_missing(path, data):
             created.append(path)
-    for dirname in ["data", "output/reports", "output/logs", "output/static"]:
+    for dirname in ["data", "output/reports", "output/logs", "output/static", "output/site/reports"]:
         (root_path / dirname).mkdir(parents=True, exist_ok=True)
     env_path = root_path / ".env.example"
     if not env_path.exists():
@@ -311,6 +320,7 @@ def init_project(root: Path | str = ".") -> list[Path]:
                     "LLM_API_KEY=",
                     "LLM_BASE_URL=https://api.openai.com/v1",
                     "LLM_MODEL=gpt-4o-mini",
+                    "PAPERRADAR_PUBLIC_BASE_URL=",
                     "OPENALEX_API_KEY=",
                     "FEISHU_WEBHOOK_URL=",
                     "EMAIL_FROM=",

@@ -245,15 +245,33 @@ concurrency:
   group: paperradar-${{ github.ref_name }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
 jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Configure public report URL
+        run: |
+          if [ -n "$PAPERRADAR_PUBLIC_BASE_URL_OVERRIDE" ]; then
+            echo "PAPERRADAR_PUBLIC_BASE_URL=$PAPERRADAR_PUBLIC_BASE_URL_OVERRIDE" >> "$GITHUB_ENV"
+          else
+            echo "PAPERRADAR_PUBLIC_BASE_URL=https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}" >> "$GITHUB_ENV"
+          fi
+        env:
+          PAPERRADAR_PUBLIC_BASE_URL_OVERRIDE: ${{ vars.PAPERRADAR_PUBLIC_BASE_URL }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
+      - uses: actions/configure-pages@v5
       - name: Install
         run: python -m pip install -e .
       - name: Doctor
@@ -266,6 +284,7 @@ jobs:
             paperradar run
           fi
         env:
+          PAPERRADAR_PUBLIC_BASE_URL: ${{ env.PAPERRADAR_PUBLIC_BASE_URL }}
           LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
           LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
           LLM_MODEL: ${{ secrets.LLM_MODEL }}
@@ -276,9 +295,19 @@ jobs:
           FEISHU_WEBHOOK_URL: ${{ secrets.FEISHU_WEBHOOK_URL }}
           DINGTALK_WEBHOOK_URL: ${{ secrets.DINGTALK_WEBHOOK_URL }}
           WEWORK_WEBHOOK_URL: ${{ secrets.WEWORK_WEBHOOK_URL }}
+          GENERIC_WEBHOOK_URL: ${{ secrets.GENERIC_WEBHOOK_URL }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          NTFY_SERVER_URL: ${{ secrets.NTFY_SERVER_URL }}
+          NTFY_TOPIC: ${{ secrets.NTFY_TOPIC }}
+          NTFY_TOKEN: ${{ secrets.NTFY_TOKEN }}
+          BARK_URL: ${{ secrets.BARK_URL }}
+          SLACK_WEBHOOK_URL: ${{ secrets.SLACK_WEBHOOK_URL }}
           EMAIL_FROM: ${{ secrets.EMAIL_FROM }}
           EMAIL_PASSWORD: ${{ secrets.EMAIL_PASSWORD }}
           EMAIL_TO: ${{ secrets.EMAIL_TO }}
+          EMAIL_SMTP_SERVER: ${{ secrets.EMAIL_SMTP_SERVER }}
+          EMAIL_SMTP_PORT: ${{ secrets.EMAIL_SMTP_PORT }}
           ZOTERO_USER_ID: ${{ secrets.ZOTERO_USER_ID }}
           ZOTERO_GROUP_ID: ${{ secrets.ZOTERO_GROUP_ID }}
           ZOTERO_API_KEY: ${{ secrets.ZOTERO_API_KEY }}
@@ -287,6 +316,13 @@ jobs:
         with:
           name: paperradar-output
           path: output/
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: output/site
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
 """
 
 DOCKER_COMPOSE_TEMPLATE = """services:

@@ -190,11 +190,63 @@ def inline_markdown(text: str) -> str:
 def save_report(result: RunResult, output_dir: Path) -> tuple[Path, Path]:
     reports_dir = output_dir / "reports"
     static_dir = output_dir / "static"
+    site_dir = output_dir / "site"
+    site_reports_dir = site_dir / "reports"
     reports_dir.mkdir(parents=True, exist_ok=True)
     static_dir.mkdir(parents=True, exist_ok=True)
+    site_reports_dir.mkdir(parents=True, exist_ok=True)
     md_path = reports_dir / f"{result.run_id}.md"
     html_path = reports_dir / f"{result.run_id}.html"
     md_path.write_text(result.report_markdown, encoding="utf-8")
     html_path.write_text(result.report_html, encoding="utf-8")
     (static_dir / "index.html").write_text(result.report_html, encoding="utf-8")
+    (site_reports_dir / f"{result.run_id}.md").write_text(result.report_markdown, encoding="utf-8")
+    (site_reports_dir / f"{result.run_id}.html").write_text(result.report_html, encoding="utf-8")
+    write_site_index(site_dir, site_reports_dir)
     return md_path, html_path
+
+
+def public_report_url(public_base_url: str, run_id: str) -> str:
+    base_url = str(public_base_url or "").strip().rstrip("/")
+    if not base_url:
+        return ""
+    return f"{base_url}/reports/{run_id}.html"
+
+
+def attach_public_report_link(markdown: str, html_doc: str, url: str) -> tuple[str, str]:
+    if not url:
+        return markdown, html_doc
+    escaped_url = html.escape(url, quote=True)
+    markdown_with_link = markdown.rstrip() + f"\n\n---\n\nFull report: {url}\n"
+    link_html = f"<p><a href=\"{escaped_url}\">Full report</a></p>"
+    if "</main>" in html_doc:
+        html_with_link = html_doc.replace("</main>", f"{link_html}</main>", 1)
+    else:
+        html_with_link = html_doc + link_html
+    return markdown_with_link, html_with_link
+
+
+def write_site_index(site_dir: Path, reports_dir: Path) -> None:
+    reports = sorted(reports_dir.glob("*.html"), key=lambda path: path.stat().st_mtime, reverse=True)
+    items = "\n".join(
+        f"<li><a href=\"reports/{html.escape(path.name, quote=True)}\">{html.escape(path.stem)}</a></li>"
+        for path in reports
+    )
+    if not items:
+        items = "<li>No reports generated yet.</li>"
+    index_html = f"""<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PaperRadar Reports</title>
+  <style>
+    body {{ margin: 0; background: #f6f6f4; color: #171717; font-family: Inter, system-ui, -apple-system, 'Segoe UI', sans-serif; }}
+    main {{ max-width: 920px; margin: 0 auto; padding: 32px 20px 64px; }}
+    li {{ margin: 10px 0; line-height: 1.5; }}
+    a {{ color: #155f50; }}
+  </style>
+</head>
+<body><main><h1>PaperRadar Reports</h1><ul>{items}</ul></main></body></html>"""
+    site_dir.mkdir(parents=True, exist_ok=True)
+    (site_dir / "index.html").write_text(index_html, encoding="utf-8")
