@@ -276,7 +276,7 @@ jobs:
         with:
           python-version: "3.12"
       - name: Install
-        run: python -m pip install -e .
+        run: python -m pip install -e . pytest
       - name: Compile
         run: python -m compileall -q paperradar
       - name: Test
