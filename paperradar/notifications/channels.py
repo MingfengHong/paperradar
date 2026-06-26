@@ -114,11 +114,13 @@ def build_email_markdown(markdown: str, max_lines: int = 80, max_line_length: in
     lines = [
         "PaperRadar paper recommendation digest",
         "",
-        "This email contains a concise delivery-safe summary. The full report is available in the generated PaperRadar output.",
+        "A concise email summary is shown below. Open the generated PaperRadar report for detailed analysis.",
         "",
     ]
     url_pattern = re.compile(r"https?://\S+", re.IGNORECASE)
     skipped_prefixes = ("DOI", "DOI：", "arXiv", "arXiv：", "链接", "链接：", "Full report")
+    kept_prefixes = ("# ", "## ", "### ", "- **")
+    kept_terms = ("订阅：", "生成时间：", "报告模块：", "建议：", "本次没有", "过滤论文数量")
     blank_pending = False
     for raw_line in markdown.splitlines():
         line = raw_line.rstrip()
@@ -128,6 +130,8 @@ def build_email_markdown(markdown: str, max_lines: int = 80, max_line_length: in
             continue
         normalized = stripped.lstrip("-").strip()
         if url_pattern.search(stripped) or normalized.startswith(skipped_prefixes):
+            continue
+        if not stripped.startswith(kept_prefixes) and not any(term in stripped for term in kept_terms):
             continue
         if len(line) > max_line_length:
             line = line[: max_line_length - 3].rstrip() + "..."
