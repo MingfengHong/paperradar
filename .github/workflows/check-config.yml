@@ -1,15 +1,28 @@
-name: PaperRadar Config Check
+name: PaperRadar CI
 
 on:
+  push:
+    branches: ["main"]
+  pull_request:
   workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   check:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - run: python -m pip install -e .
-      - run: paperradar doctor
+      - name: Install
+        run: python -m pip install -e .
+      - name: Compile
+        run: python -m compileall -q paperradar
+      - name: Test
+        run: python -m pytest -q
+      - name: Doctor
+        run: paperradar doctor

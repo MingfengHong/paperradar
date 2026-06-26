@@ -7,6 +7,10 @@ on:
         description: "Generate reports without sending notifications"
         required: false
         default: "false"
+      deploy_pages:
+        description: "Deploy output/site to GitHub Pages"
+        required: false
+        default: "false"
   schedule:
     - cron: "0 23 * * *"
 
@@ -14,40 +18,42 @@ concurrency:
   group: paperradar-${{ github.ref_name }}
   cancel-in-progress: true
 
-permissions:
-  contents: read
-  pages: write
-  id-token: write
-
 jobs:
   run:
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+    permissions:
+      contents: read
+    env:
+      NO_PUSH: ${{ github.event_name == 'workflow_dispatch' && inputs.no_push || 'false' }}
+      PAPERRADAR_PUBLIC_BASE_URL_OVERRIDE: ${{ vars.PAPERRADAR_PUBLIC_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
       - name: Configure public report URL
         run: |
           if [ -n "$PAPERRADAR_PUBLIC_BASE_URL_OVERRIDE" ]; then
             echo "PAPERRADAR_PUBLIC_BASE_URL=$PAPERRADAR_PUBLIC_BASE_URL_OVERRIDE" >> "$GITHUB_ENV"
-          else
+          elif [ "${PAPERRADAR_DEPLOY_PAGES:-}" = "true" ]; then
             echo "PAPERRADAR_PUBLIC_BASE_URL=https://${GITHUB_REPOSITORY_OWNER}.github.io/${GITHUB_REPOSITORY#*/}" >> "$GITHUB_ENV"
+          else
+            echo "PAPERRADAR_PUBLIC_BASE_URL=" >> "$GITHUB_ENV"
           fi
         env:
-          PAPERRADAR_PUBLIC_BASE_URL_OVERRIDE: ${{ vars.PAPERRADAR_PUBLIC_BASE_URL }}
+          PAPERRADAR_DEPLOY_PAGES: ${{ vars.PAPERRADAR_DEPLOY_PAGES }}
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
-      - uses: actions/configure-pages@v5
       - name: Install
         run: python -m pip install -e .
+      - name: Compile
+        run: python -m compileall -q paperradar
+      - name: Test
+        run: python -m pytest -q
       - name: Doctor
         run: paperradar doctor
       - name: Run
         run: |
-          if [ "${{ github.event.inputs.no_push }}" = "true" ]; then
+          if [ "$NO_PUSH" = "true" ]; then
             paperradar run --no-push
           else
             paperradar run
@@ -85,6 +91,26 @@ jobs:
         with:
           name: paperradar-output
           path: output/
+
+  deploy-pages:
+    needs: run
+    if: ${{ (github.event_name == 'workflow_dispatch' && inputs.deploy_pages == 'true') || (github.event_name != 'workflow_dispatch' && vars.PAPERRADAR_DEPLOY_PAGES == 'true') }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Download reports
+        uses: actions/download-artifact@v4
+        with:
+          name: paperradar-output
+          path: output
+      - uses: actions/configure-pages@v5
       - name: Upload Pages artifact
         uses: actions/upload-pages-artifact@v3
         with:
