@@ -7,7 +7,7 @@ from .config import AppConfig
 from .library import load_library, load_zotero
 from .llm import LLMClient
 from .models import RunResult, Subscription, Topic
-from .notifications import send_report
+from .notifications import NotificationResult, send_report
 from .ranking import prefilter_for_llm
 from .recommender import recommend
 from .reports import attach_public_report_link, generate_report, public_report_url, save_report
@@ -64,9 +64,18 @@ class Runner:
         self.storage.save_run(result)
         pushed = [rec.paper for rec in recommendations if not rec.filtered]
         if not no_push:
-            send_report(self.config.notifications, subscription.channels, f"PaperRadar: {topic.name}", result.report_markdown, result.report_html)
+            delivery_results = send_report(self.config.notifications, subscription.channels, f"PaperRadar: {topic.name}", result.report_markdown, result.report_html)
+            self._raise_for_delivery_failures(delivery_results)
             self.storage.mark_pushed(subscription.id, pushed)
         return result
+
+    def _raise_for_delivery_failures(self, delivery_results: list[NotificationResult]) -> None:
+        if not delivery_results:
+            raise RuntimeError("no notification channels configured")
+        failures = [result for result in delivery_results if not result.ok]
+        if failures:
+            details = "; ".join(f"{result.channel}: {result.message}" for result in failures)
+            raise RuntimeError(f"notification failed: {details}")
 
     def run_all(self, no_push: bool = False, include_disabled: bool = False) -> list[RunResult]:
         results: list[RunResult] = []
