@@ -233,6 +233,14 @@ def print_template(kind: str) -> None:
 GITHUB_ACTIONS_TEMPLATE = """name: PaperRadar
 
 on:
+  push:
+    branches: ["main"]
+    paths:
+      - ".github/workflows/paperradar.yml"
+      - "config/**"
+      - "paperradar/**"
+      - "tests/**"
+      - "pyproject.toml"
   workflow_dispatch:
     inputs:
       no_push:
@@ -257,7 +265,7 @@ jobs:
     permissions:
       contents: read
     env:
-      NO_PUSH: ${{ github.event_name == 'workflow_dispatch' && inputs.no_push || 'false' }}
+      NO_PUSH: ${{ github.event_name == 'workflow_dispatch' && inputs.no_push || github.event_name == 'push' && 'true' || 'false' }}
       PAPERRADAR_PUBLIC_BASE_URL_OVERRIDE: ${{ vars.PAPERRADAR_PUBLIC_BASE_URL }}
     steps:
       - uses: actions/checkout@v4
