@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import html as html_lib
+import re
 import smtplib
 from dataclasses import dataclass
 from email.mime.multipart import MIMEMultipart
@@ -89,12 +91,14 @@ def send_email(cfg: dict[str, Any], title: str, markdown: str, html: str) -> Non
         raise RuntimeError("email sender/password/to missing")
     server = cfg.get("smtp_server") or infer_smtp(sender)
     port = int(cfg.get("smtp_port") or 587)
+    email_markdown = build_email_markdown(markdown)
+    email_html = build_email_html(email_markdown)
     message = MIMEMultipart("alternative")
     message["Subject"] = title
     message["From"] = sender
     message["To"] = ", ".join(recipients)
-    message.attach(MIMEText(markdown, "plain", "utf-8"))
-    message.attach(MIMEText(html, "html", "utf-8"))
+    message.attach(MIMEText(email_markdown, "plain", "utf-8"))
+    message.attach(MIMEText(email_html, "html", "utf-8"))
     if port == 465:
         with smtplib.SMTP_SSL(server, port, timeout=30) as smtp:
             smtp.login(sender, password)
@@ -104,6 +108,58 @@ def send_email(cfg: dict[str, Any], title: str, markdown: str, html: str) -> Non
             smtp.starttls()
             smtp.login(sender, password)
             smtp.sendmail(sender, recipients, message.as_string())
+
+
+def build_email_markdown(markdown: str, max_lines: int = 80, max_line_length: int = 220) -> str:
+    lines = [
+        "PaperRadar paper recommendation digest",
+        "",
+        "This email contains a concise delivery-safe summary. The full report is available in the generated PaperRadar output.",
+        "",
+    ]
+    url_pattern = re.compile(r"https?://\S+", re.IGNORECASE)
+    skipped_prefixes = ("DOI", "DOI：", "arXiv", "arXiv：", "链接", "链接：", "Full report")
+    blank_pending = False
+    for raw_line in markdown.splitlines():
+        line = raw_line.rstrip()
+        stripped = line.strip()
+        if not stripped:
+            blank_pending = bool(lines and lines[-1])
+            continue
+        normalized = stripped.lstrip("-").strip()
+        if url_pattern.search(stripped) or normalized.startswith(skipped_prefixes):
+            continue
+        if len(line) > max_line_length:
+            line = line[: max_line_length - 3].rstrip() + "..."
+        if blank_pending and lines[-1]:
+            lines.append("")
+        lines.append(line)
+        blank_pending = False
+        if len(lines) >= max_lines:
+            lines.extend(["", "More items were omitted from this email summary. Please open the full PaperRadar report."])
+            break
+    return "\n".join(lines).strip() + "\n"
+
+
+def build_email_html(markdown: str) -> str:
+    body_lines: list[str] = []
+    for line in markdown.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if stripped.startswith("# "):
+            body_lines.append(f"<h1>{html_lib.escape(stripped[2:])}</h1>")
+        elif stripped.startswith("## "):
+            body_lines.append(f"<h2>{html_lib.escape(stripped[3:])}</h2>")
+        elif stripped.startswith("### "):
+            body_lines.append(f"<h3>{html_lib.escape(stripped[4:])}</h3>")
+        elif stripped.startswith("- "):
+            body_lines.append(f"<p>{html_lib.escape(stripped[2:])}</p>")
+        elif stripped.startswith("  - "):
+            body_lines.append(f"<p class='detail'>{html_lib.escape(stripped[4:])}</p>")
+        else:
+            body_lines.append(f"<p>{html_lib.escape(stripped)}</p>")
+    return "<!doctype html><html><body style='font-family:Arial,sans-serif;line-height:1.6;color:#222'>" + "".join(body_lines) + "</body></html>"
 
 
 def send_generic(cfg: dict[str, Any], title: str, markdown: str, html: str) -> None:
