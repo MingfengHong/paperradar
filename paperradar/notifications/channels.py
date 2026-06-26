@@ -110,17 +110,19 @@ def send_email(cfg: dict[str, Any], title: str, markdown: str, html: str) -> Non
             smtp.sendmail(sender, recipients, message.as_string())
 
 
-def build_email_markdown(markdown: str, max_lines: int = 80, max_line_length: int = 220) -> str:
+def build_email_markdown(markdown: str, max_lines: int = 40, max_line_length: int = 180) -> str:
+    paper_count = sum(1 for line in markdown.splitlines() if line.strip().startswith("- **"))
     lines = [
-        "PaperRadar paper recommendation digest",
+        "PaperRadar report generated",
         "",
-        "A concise email summary is shown below. Open the generated PaperRadar report for detailed analysis.",
+        f"Recommended paper entries in the full report: {paper_count}",
+        "Open the generated PaperRadar report artifact or Pages site for detailed analysis.",
         "",
     ]
     url_pattern = re.compile(r"https?://\S+", re.IGNORECASE)
     skipped_prefixes = ("DOI", "DOI：", "arXiv", "arXiv：", "链接", "链接：", "Full report")
-    kept_prefixes = ("# ", "## ", "### ", "- **")
-    kept_terms = ("订阅：", "生成时间：", "报告模块：", "建议：", "本次没有", "过滤论文数量")
+    kept_prefixes = ("# ", "## ")
+    kept_terms = ("订阅：", "生成时间：", "报告模块：", "本次没有", "过滤论文数量")
     blank_pending = False
     for raw_line in markdown.splitlines():
         line = raw_line.rstrip()

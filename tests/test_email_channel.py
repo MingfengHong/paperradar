@@ -19,5 +19,6 @@ def test_email_markdown_removes_link_dense_lines() -> None:
     assert "https://example.test" not in result
     assert "10.0000/example" not in result
     assert "2501.00001" not in result
-    assert "A useful paper" in result
+    assert "A useful paper" not in result
     assert "valuable" not in result
+    assert "Recommended paper entries in the full report: 1" in result
