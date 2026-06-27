@@ -100,10 +100,18 @@ def send_email(cfg: dict[str, Any], title: str, markdown: str, html: str) -> str
     except smtplib.SMTPResponseException as exc:
         if not is_smtp_spam_rejection(exc):
             raise
-        fallback_markdown = build_email_markdown(markdown, max_papers=1, max_line_length=140, max_chars=1800)
-        fallback_html = build_email_html(fallback_markdown)
-        deliver_email(sender, password, recipients, server, port, title, fallback_markdown, fallback_html)
-        return "sent with compact fallback after SMTP spam rejection"
+        brief_markdown = build_email_markdown(markdown, max_papers=3, max_line_length=130, max_chars=3000, detail_mode="brief")
+        brief_html = build_email_html(brief_markdown)
+        try:
+            deliver_email(sender, password, recipients, server, port, title, brief_markdown, brief_html)
+            return "sent with brief fallback after SMTP spam rejection"
+        except smtplib.SMTPResponseException as fallback_exc:
+            if not is_smtp_spam_rejection(fallback_exc):
+                raise
+            compact_markdown = build_email_markdown(markdown, max_papers=1, max_line_length=140, max_chars=1800, detail_mode="brief")
+            compact_html = build_email_html(compact_markdown)
+            deliver_email(sender, password, recipients, server, port, title, compact_markdown, compact_html)
+            return "sent with compact fallback after SMTP spam rejection"
 
 
 def deliver_email(sender: str, password: str, recipients: list[str], server: str, port: int, title: str, email_markdown: str, email_html: str) -> None:
@@ -129,12 +137,12 @@ def is_smtp_spam_rejection(exc: smtplib.SMTPResponseException) -> bool:
     return exc.smtp_code == 554 and "spam" in error.lower()
 
 
-def build_email_markdown(markdown: str, max_papers: int = 3, max_line_length: int = 120, max_chars: int = 2600) -> str:
+def build_email_markdown(markdown: str, max_papers: int = 4, max_line_length: int = 190, max_chars: int = 6200, detail_mode: str = "rich") -> str:
     papers = extract_email_papers(markdown)
     lines = [
-        "# PaperRadar 论文推送",
+        "# PaperRadar 今日论文",
         "",
-        f"- 本次推荐：{len(papers)} 篇",
+        f"- 本次推荐：{len(papers)} 篇；邮件展示前 {min(len(papers), max_papers)} 篇",
     ]
     lines.append("")
 
@@ -142,12 +150,12 @@ def build_email_markdown(markdown: str, max_papers: int = 3, max_line_length: in
         no_match = first_matching_line(markdown, ("本次没有", "没有达到阈值", "没有高相关"))
         lines.extend(["## 今日结果", no_match or "本次没有达到阈值的推荐论文。", ""])
     else:
-        lines.extend(["## 优先阅读清单", ""])
+        lines.extend(["## 值得优先看的论文", ""])
         for index, paper in enumerate(papers[:max_papers], start=1):
             lines.append(f"{index}. {truncate_line(paper['title'], max_line_length)}")
             details = paper["details"]
             assert isinstance(details, list)
-            for detail in select_email_details(details):
+            for detail in select_email_details(details, detail_mode=detail_mode):
                 lines.append(f"   - {truncate_line(detail, max_line_length)}")
             lines.append("")
         remaining = len(papers) - max_papers
@@ -157,31 +165,46 @@ def build_email_markdown(markdown: str, max_papers: int = 3, max_line_length: in
     return truncate_email_body("\n".join(lines).strip() + "\n", max_chars)
 
 
-def select_email_details(details: list[str], max_details: int = 2) -> list[str]:
-    priority_prefixes = ("建议：", "理由：")
+def select_email_details(details: list[str], detail_mode: str = "rich") -> list[str]:
+    max_details = 3 if detail_mode == "brief" else 5
+    priority_prefixes = ("建议：", "理由：") if detail_mode == "brief" else ("建议：", "理由：", "TL;DR：", "主要贡献：", "阅读前注意：", "与已有文献相关：")
     selected: list[str] = []
+    metadata = next((detail for detail in details if is_metadata_detail(detail)), "")
+    if metadata:
+        selected.append(compact_email_detail(metadata, detail_mode=detail_mode))
     for prefix in priority_prefixes:
         match = next((detail for detail in details if detail.startswith(prefix)), "")
         if match:
-            selected.append(compact_email_detail(match))
+            selected.append(compact_email_detail(match, detail_mode=detail_mode))
         if len(selected) >= max_details:
             return selected
     for detail in details:
         if detail not in selected:
-            selected.append(compact_email_detail(detail))
+            selected.append(compact_email_detail(detail, detail_mode=detail_mode))
         if len(selected) >= max_details:
             break
     return selected
 
 
-def compact_email_detail(detail: str) -> str:
+def compact_email_detail(detail: str, detail_mode: str = "rich") -> str:
+    if is_metadata_detail(detail):
+        return f"来源：{truncate_line(detail, 150 if detail_mode == 'rich' else 110)}"
     if detail.startswith("建议："):
         return "；".join(detail.split("；")[:2])
     if detail.startswith("理由："):
-        return truncate_line(detail, 68)
+        return "为什么值得读：" + truncate_line(detail.removeprefix("理由："), 140 if detail_mode == "rich" else 78)
     if detail.startswith("TL;DR："):
-        return truncate_line(detail, 72)
-    return truncate_line(detail, 110)
+        return "一句话：" + truncate_line(detail.removeprefix("TL;DR："), 140 if detail_mode == "rich" else 82)
+    if detail.startswith("主要贡献："):
+        return "可借鉴点：" + truncate_line(detail.removeprefix("主要贡献："), 130 if detail_mode == "rich" else 82)
+    if detail.startswith("阅读前注意："):
+        return "阅读注意：" + truncate_line(detail.removeprefix("阅读前注意："), 120 if detail_mode == "rich" else 80)
+    return truncate_line(detail, 130 if detail_mode == "rich" else 90)
+
+
+def is_metadata_detail(detail: str) -> bool:
+    known_prefixes = ("建议：", "理由：", "TL;DR：", "分类：", "关键词：", "主要贡献：", "阅读前注意：", "与已有文献相关：")
+    return bool(detail and not detail.startswith(known_prefixes))
 
 
 def extract_email_papers(markdown: str) -> list[dict[str, list[str] | str]]:
