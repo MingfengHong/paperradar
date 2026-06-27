@@ -4,8 +4,8 @@ from pathlib import Path
 import pytest
 
 from paperradar.config import init_project
-from paperradar.llm import LLMClient
-from paperradar.models import Paper, Subscription, Topic
+from paperradar.llm import LLMClient, looks_off_topic, mark_off_topic
+from paperradar.models import Paper, Recommendation, Subscription, Topic
 from paperradar.notifications import NotificationResult
 from paperradar.runner import Runner
 
@@ -35,7 +35,7 @@ def test_runner_allows_missing_llm_key(tmp_path: Path, monkeypatch) -> None:
     for name in ["LLM_API_KEY", "LLM_BASE_URL", "LLM_MODEL", "LLM_API_TYPE"]:
         monkeypatch.delenv(name, raising=False)
     init_project(tmp_path)
-    monkeypatch.setattr(Runner, "fetch_candidates", lambda self, topic, subscription, llm_client: [Paper(id="p", title="LLM paper recommendation", abstract="A paper recommender.")])
+    monkeypatch.setattr(Runner, "fetch_candidates", lambda self, topic, subscription, llm_client: [Paper(id="p", title="Large language model recommendation for scientific literature", abstract="A paper recommender for scientific literature monitoring.")])
     runner = Runner(tmp_path)
     try:
         result = runner.run_subscription(runner.config.subscriptions()[0], no_push=True)
@@ -89,3 +89,24 @@ def test_llm_generates_scholarly_queries(monkeypatch) -> None:
     queries = client.plan_scholarly_queries(topic, sub)
     assert queries == ["LLM literature recommendation", "scientific paper recommender"]
     assert captured["payload"]["model"] == "test-model"
+
+
+def test_off_topic_llm_reason_downranks_recommendation() -> None:
+    rec = Recommendation(
+        paper=Paper(id="p", title="Unrelated LLM paper"),
+        worth_read_score=0.9,
+        relevance_score=0.8,
+        novelty_score=0.7,
+        utility_score=0.8,
+        urgency_score=0.7,
+        confidence_score=0.9,
+        reading_action="略读",
+        reason="Not directly aligned with the user's literature recommendation topic.",
+    )
+
+    assert looks_off_topic(rec.reason)
+    mark_off_topic(rec)
+
+    assert rec.reading_action == "过滤"
+    assert rec.worth_read_score <= 0.25
+    assert rec.relevance_score <= 0.2

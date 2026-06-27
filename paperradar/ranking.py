@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections import Counter
 from datetime import datetime, timezone
 from typing import Any
@@ -77,6 +78,9 @@ def prefilter_for_llm(
     candidates = list(deduped.values())
     sim_cfg = config.get("library_similarity", {})
     library_signals = library_similarity_rerank(candidates, library_items, config) if sim_cfg.get("enabled", True) else {}
+    candidates = apply_quality_gate(topic, candidates, config)
+    if not candidates:
+        return [], library_signals
     limit = int(config.get("llm_candidate_limit") or max(subscription.max_papers * 4, 20))
     limit = max(subscription.max_papers, min(limit, len(candidates)))
     topic_vector = Counter(tokenize(topic_text(topic)))
@@ -88,10 +92,59 @@ def prefilter_for_llm(
         library_score = library_signals.get(paper.normalized_key(), (0.0, []))[0]
         freshness = freshness_score(paper)
         metadata = 1.0 if paper.abstract else 0.45
-        score = 0.42 * max(topic_score, keyword_score) + 0.30 * library_score + 0.16 * freshness + 0.12 * metadata
+        source_quality = source_quality_score(paper)
+        score = 0.52 * max(topic_score, keyword_score) + 0.24 * library_score + 0.10 * freshness + 0.08 * metadata + 0.06 * source_quality
         scored.append((score, paper))
     scored.sort(key=lambda item: item[0], reverse=True)
     return [paper for _, paper in scored[:limit]], library_signals
+
+
+def apply_quality_gate(topic: Topic, papers: list[Paper], config: dict[str, Any]) -> list[Paper]:
+    gate_cfg = config.get("quality_gate", {})
+    if gate_cfg.get("enabled", True) is False or not topic.keywords:
+        return papers
+    default_hits = 2 if len(topic.keywords) >= 3 else 1
+    min_hits = int(gate_cfg.get("min_keyword_hits") or default_hits)
+    return [paper for paper in papers if keyword_hit_count(topic, paper) >= min_hits]
+
+
+def keyword_hit_count(topic: Topic, paper: Paper) -> int:
+    text = paper_text(paper).lower()
+    hits = 0
+    for keyword in topic.keywords:
+        if keyword_matches(keyword, text):
+            hits += 1
+    return hits
+
+
+def keyword_matches(keyword: str, text: str) -> bool:
+    normalized = keyword.lower().strip()
+    if not normalized:
+        return False
+    tokens = tokenize(normalized)
+    if not tokens:
+        return False
+    if normalized in {"large language model", "large language models"} and re.search(r"\bllms?\b", text):
+        return True
+    if len(tokens) == 1:
+        return bool(re.search(rf"\b{re.escape(tokens[0])}\w*\b", text))
+    parts = []
+    for index, token in enumerate(tokens):
+        suffix = "s?" if index == len(tokens) - 1 else ""
+        parts.append(re.escape(token) + suffix)
+    return bool(re.search(r"\b" + r"\s+".join(parts) + r"\b", text))
+
+
+def source_quality_score(paper: Paper) -> float:
+    if paper.source == "arxiv":
+        return 1.0
+    if paper.source == "openalex":
+        return 0.9 if paper.abstract else 0.65
+    if paper.source == "journal_rss":
+        return 0.85
+    if paper.source == "crossref":
+        return 0.55 if paper.abstract else 0.25
+    return 0.4
 
 
 def similarity_matrix(left: list[str], right: list[str], config: dict[str, Any]) -> list[list[float]]:
@@ -142,8 +195,6 @@ def lexical_similarity_matrix(left: list[str], right: list[str]) -> list[list[fl
 
 
 def tokenize(value: str) -> list[str]:
-    import re
-
     return [token for token in re.findall(r"[a-zA-Z][a-zA-Z0-9_-]{2,}|[\u4e00-\u9fff]{2,}", value.lower()) if token not in STOPWORDS]
 
 

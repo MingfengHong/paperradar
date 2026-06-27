@@ -60,7 +60,7 @@ DEFAULT_SETTINGS = {
             "other",
         ],
         "llm_candidate_limit": 32,
-        "llm_analysis": {"enabled": True, "language": "Chinese", "max_papers": 12},
+        "llm_analysis": {"enabled": True, "language": "Chinese", "max_papers": 24},
     },
 }
 

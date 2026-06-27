@@ -1,6 +1,6 @@
 from paperradar.models import LibraryItem, Paper
 from paperradar.models import Subscription, Topic
-from paperradar.ranking import library_similarity_rerank, prefilter_for_llm, time_decay_weights
+from paperradar.ranking import keyword_hit_count, library_similarity_rerank, prefilter_for_llm, time_decay_weights
 
 
 def test_time_decay_weights_prioritize_recent_items() -> None:
@@ -31,5 +31,12 @@ def test_prefilter_limits_candidates_before_llm() -> None:
         Paper(id="p4", title="Battery chemistry", abstract="Materials paper."),
     ]
     selected, _ = prefilter_for_llm(topic, sub, papers, [], {"llm_candidate_limit": 2})
-    assert len(selected) == 2
+    assert len(selected) == 1
     assert selected[0].id == "p1"
+
+
+def test_keyword_hit_count_matches_multi_word_phrases() -> None:
+    topic = Topic(id="t", name="paper recommendation", keywords=["large language model", "scientific literature", "recommendation"])
+    paper = Paper(id="p", title="LLM recommendation for scientific literature", abstract="Large language models can rank papers.")
+
+    assert keyword_hit_count(topic, paper) == 3

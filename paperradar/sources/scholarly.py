@@ -23,7 +23,7 @@ def _year(value: Any) -> int | None:
 def fetch_openalex(query: str, max_results: int = 20, api_key: str = "") -> list[Paper]:
     if not query:
         return []
-    url = f"https://api.openalex.org/works?search={quote_plus(query)}&per-page={max_results}"
+    url = f"https://api.openalex.org/works?filter=title_and_abstract.search:{quote_plus(query)}&per-page={max_results}"
     if api_key:
         url += f"&api_key={quote_plus(api_key)}"
     response = requests.get(url, timeout=20)
@@ -31,6 +31,9 @@ def fetch_openalex(query: str, max_results: int = 20, api_key: str = "") -> list
     data = response.json()
     papers: list[Paper] = []
     for item in data.get("results", []):
+        primary_location = item.get("primary_location") or {}
+        primary_source = primary_location.get("source") or {}
+        host_venue = item.get("host_venue") or {}
         authors = [
             a.get("author", {}).get("display_name", "")
             for a in item.get("authorships", [])
@@ -38,10 +41,8 @@ def fetch_openalex(query: str, max_results: int = 20, api_key: str = "") -> list
         ]
         doi = str(item.get("doi") or "").replace("https://doi.org/", "")
         venue = (
-            item.get("primary_location", {})
-            .get("source", {})
-            .get("display_name", "")
-            or item.get("host_venue", {}).get("display_name", "")
+            primary_source.get("display_name", "")
+            or host_venue.get("display_name", "")
             or ""
         )
         abstract = reconstruct_openalex_abstract(item.get("abstract_inverted_index") or {})
@@ -54,8 +55,8 @@ def fetch_openalex(query: str, max_results: int = 20, api_key: str = "") -> list
                 venue=venue,
                 abstract=abstract,
                 doi=doi,
-                url=str(item.get("id") or item.get("primary_location", {}).get("landing_page_url") or ""),
-                pdf_url=str(item.get("primary_location", {}).get("pdf_url") or ""),
+                url=str(item.get("id") or primary_location.get("landing_page_url") or ""),
+                pdf_url=str(primary_location.get("pdf_url") or ""),
                 source="openalex",
                 published_at=str(item.get("publication_date") or ""),
                 extra={"cited_by_count": item.get("cited_by_count", 0)},
@@ -85,6 +86,8 @@ def fetch_crossref(query: str, max_results: int = 20, email: str = "") -> list[P
     papers: list[Paper] = []
     for item in items:
         title = " ".join(item.get("title") or [])
+        if not is_crossref_research_item(item, title):
+            continue
         authors = [
             " ".join(part for part in [author.get("given", ""), author.get("family", "")] if part)
             for author in item.get("author", [])
@@ -109,6 +112,32 @@ def fetch_crossref(query: str, max_results: int = 20, email: str = "") -> list[P
             )
         )
     return [paper for paper in papers if paper.title]
+
+
+def is_crossref_research_item(item: dict[str, Any], title: str) -> bool:
+    normalized_title = " ".join(title.lower().split())
+    if not normalized_title:
+        return False
+    blocked_prefixes = (
+        "review for ",
+        "decision letter for ",
+        "author response for ",
+        "peer review ",
+        "review of ",
+        "supplementary material",
+        "supplemental material",
+        "correction:",
+        "erratum:",
+        "corrigendum:",
+    )
+    if normalized_title.startswith(blocked_prefixes):
+        return False
+    crossref_type = str(item.get("type") or "").lower()
+    blocked_types = {"peer-review", "component", "journal-issue", "journal-volume", "proceedings"}
+    if crossref_type in blocked_types:
+        return False
+    allowed_types = {"journal-article", "proceedings-article", "posted-content", "book-chapter", "book", "monograph", ""}
+    return crossref_type in allowed_types
 
 
 def strip_tags(value: str) -> str:

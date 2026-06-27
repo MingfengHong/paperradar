@@ -46,4 +46,4 @@ ranking:
   llm_analysis:
     enabled: true
     language: Chinese
-    max_papers: 12
+    max_papers: 24

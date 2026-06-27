@@ -75,6 +75,8 @@ class LLMClient:
                 rec.confidence_score = clamp(item.get("confidence_score"), rec.confidence_score)
                 rec.reading_action = str(item.get("reading_action") or rec.reading_action)
                 rec.reason = str(item.get("reason") or rec.reason)
+                if looks_off_topic(rec.reason):
+                    mark_off_topic(rec)
                 rec.tldr = str(item.get("tldr") or rec.tldr)
                 rec.keywords = [str(value) for value in item.get("keywords", rec.keywords) or []][:6]
                 rec.classifier = str(item.get("classifier") or rec.classifier)
@@ -92,7 +94,7 @@ class LLMClient:
         analysis_cfg = ranking_config.get("llm_analysis", {})
         if analysis_cfg.get("enabled", True) is False:
             return recommendations
-        max_papers = int(analysis_cfg.get("max_papers") or 12)
+        max_papers = int(analysis_cfg.get("max_papers") or 24)
         target = sorted(recommendations, key=lambda rec: rec.total_score(), reverse=True)[:max_papers]
         try:
             payload = self._build_analysis_payload(topic, target, ranking_config)
@@ -116,14 +118,22 @@ class LLMClient:
                 rec.contribution = str(item.get("contribution") or rec.contribution)
                 rec.limitation = str(item.get("limitation") or rec.limitation)
                 rec.reason = str(item.get("reason") or rec.reason)
+                rec.reading_action = str(item.get("reading_action") or rec.reading_action)
+                rec.worth_read_score = clamp(item.get("worth_read_score"), rec.worth_read_score)
+                rec.relevance_score = clamp(item.get("relevance_score"), rec.relevance_score)
+                rec.utility_score = clamp(item.get("utility_score"), rec.utility_score)
+                verdict = str(item.get("relevance_verdict") or "").lower()
+                if verdict == "off_topic" or looks_off_topic(rec.reason):
+                    mark_off_topic(rec)
             return recommendations
         except Exception:
             return recommendations
 
     def _build_payload(self, topic: Topic, papers: list[Paper], heuristic: list[Recommendation]) -> dict[str, Any]:
+        language = self.config.get("analysis_language", "Chinese")
         rows = []
         hmap = {rec.paper.normalized_key(): rec for rec in heuristic}
-        for paper in papers[:20]:
+        for paper in papers[:24]:
             rec = hmap.get(paper.normalized_key())
             rows.append(
                 {
@@ -138,7 +148,8 @@ class LLMClient:
             )
         system = (
             "You are PaperRadar's paper triage assistant. Score papers for a specific research topic. "
-            "Return strict JSON only. Do not invent facts beyond title/metadata/abstract."
+            f"Return strict JSON only. Do not invent facts beyond title/metadata/abstract. "
+            f"Write reason, tldr, contribution and limitation in {language}; keep paper titles unchanged."
         )
         user = {
             "topic": topic.__dict__,
@@ -163,6 +174,12 @@ class LLMClient:
                     }
                 ]
             },
+            "decision_rules": [
+                "Recommend only papers directly useful for the user's research topic.",
+                "If a paper merely mentions shared keywords in another domain, set reading_action to 过滤 and worth_read_score <= 0.35.",
+                "Do not rank papers highly when your reason says they are not relevant or not directly aligned.",
+                f"All narrative fields must be written in {language}.",
+            ],
         }
         return {
             "model": self.model,
@@ -221,7 +238,8 @@ class LLMClient:
         system = (
             "You are PaperRadar's scientific paper analyst. "
             "Analyze only the provided title, abstract and metadata. "
-            "Return strict JSON only; do not invent experiments, citations, author reputation, or venue metrics."
+            "Return strict JSON only; do not invent experiments, citations, author reputation, or venue metrics. "
+            f"Write tldr, contribution, limitation and reason in {language}; keep paper titles unchanged."
         )
         user = {
             "language": language,
@@ -238,9 +256,21 @@ class LLMClient:
                         "contribution": "main technical contribution or value",
                         "limitation": "uncertainty or caveat visible from available evidence",
                         "reason": "why this paper is or is not worth reading for the user",
+                        "relevance_verdict": "direct|adjacent|off_topic",
+                        "reading_action": "精读|略读|收藏|观察|过滤",
+                        "worth_read_score": 0.0,
+                        "relevance_score": 0.0,
+                        "utility_score": 0.0,
                     }
                 ]
             },
+            "decision_rules": [
+                "Use direct only when the paper directly addresses the user's research question.",
+                "Use adjacent when the paper may provide transferable methods but is not mainly about the user's topic.",
+                "Use off_topic and reading_action=过滤 when the paper is about another domain, even if it shares words like LLM, scientific, literature, or recommendation.",
+                "When relevance_verdict is off_topic, worth_read_score must be <= 0.35 and relevance_score <= 0.25.",
+                f"All narrative fields must be written in {language}.",
+            ],
         }
         return {
             "model": self.model,
@@ -254,6 +284,30 @@ def clamp(value: Any, fallback: float) -> float:
         return max(0.0, min(1.0, float(value)))
     except Exception:
         return fallback
+
+
+def looks_off_topic(reason: str) -> bool:
+    text = reason.lower()
+    patterns = [
+        "not relevant",
+        "not about",
+        "not directly",
+        "far from",
+        "tangential",
+        "unlikely to help",
+        "does not directly address",
+        "does not address",
+        "marginal interest",
+    ]
+    return any(pattern in text for pattern in patterns)
+
+
+def mark_off_topic(rec: Recommendation) -> None:
+    rec.worth_read_score = min(rec.worth_read_score, 0.25)
+    rec.relevance_score = min(rec.relevance_score, 0.2)
+    rec.utility_score = min(rec.utility_score, 0.2)
+    rec.urgency_score = min(rec.urgency_score, 0.2)
+    rec.reading_action = "过滤"
 
 
 def extract_json(content: str) -> str:
