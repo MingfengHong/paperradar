@@ -44,7 +44,6 @@ def test_email_markdown_keeps_useful_paper_digest_without_link_dense_fields() ->
     assert "2501.00001" not in result
     assert "A useful paper" in result
     assert "directly relevant to the configured research topic" in result
-    assert "offers a concise method" in result
     assert "本次推荐：1 篇" in result
 
 

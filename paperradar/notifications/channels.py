@@ -131,13 +131,11 @@ def is_smtp_spam_rejection(exc: smtplib.SMTPResponseException) -> bool:
 
 def build_email_markdown(markdown: str, max_papers: int = 3, max_line_length: int = 120, max_chars: int = 2600) -> str:
     papers = extract_email_papers(markdown)
-    meta_lines = extract_email_meta(markdown)
     lines = [
         "# PaperRadar 论文推送",
         "",
         f"- 本次推荐：{len(papers)} 篇",
     ]
-    lines.extend(meta_lines)
     lines.append("")
 
     if not papers:
@@ -154,14 +152,13 @@ def build_email_markdown(markdown: str, max_papers: int = 3, max_line_length: in
             lines.append("")
         remaining = len(papers) - max_papers
         if remaining > 0:
-            lines.extend([f"还有 {remaining} 篇未放入邮件正文，请查看完整报告。", ""])
+            lines.extend([f"还有 {remaining} 篇未列出。", ""])
 
-    lines.append("完整报告：请查看 GitHub Actions artifact 或已部署的 Pages 报告。")
     return truncate_email_body("\n".join(lines).strip() + "\n", max_chars)
 
 
-def select_email_details(details: list[str], max_details: int = 3) -> list[str]:
-    priority_prefixes = ("建议：", "理由：", "TL;DR：", "主要贡献：", "阅读前注意：", "与已有文献相关：")
+def select_email_details(details: list[str], max_details: int = 2) -> list[str]:
+    priority_prefixes = ("建议：", "理由：")
     selected: list[str] = []
     for prefix in priority_prefixes:
         match = next((detail for detail in details if detail.startswith(prefix)), "")
@@ -180,21 +177,11 @@ def select_email_details(details: list[str], max_details: int = 3) -> list[str]:
 def compact_email_detail(detail: str) -> str:
     if detail.startswith("建议："):
         return "；".join(detail.split("；")[:2])
-    if detail.startswith(("理由：", "TL;DR：")):
-        return truncate_line(detail, 96)
+    if detail.startswith("理由："):
+        return truncate_line(detail, 68)
+    if detail.startswith("TL;DR："):
+        return truncate_line(detail, 72)
     return truncate_line(detail, 110)
-
-
-def extract_email_meta(markdown: str) -> list[str]:
-    kept_terms = ("订阅：", "生成时间：", "报告模块：", "过滤论文数量")
-    result: list[str] = []
-    for raw_line in markdown.splitlines():
-        stripped = raw_line.strip()
-        if any(term in stripped for term in kept_terms):
-            result.append(stripped)
-        if len(result) >= 4:
-            break
-    return result
 
 
 def extract_email_papers(markdown: str) -> list[dict[str, list[str] | str]]:
