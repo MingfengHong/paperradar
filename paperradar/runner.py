@@ -65,6 +65,8 @@ class Runner:
         pushed = [rec.paper for rec in recommendations if not rec.filtered]
         if not no_push:
             delivery_results = send_report(self.config.notifications, subscription.channels, f"PaperRadar: {topic.name}", result.report_markdown, result.report_html)
+            for delivery in delivery_results:
+                print(f"notification {delivery.channel}: {delivery.message}")
             self._raise_for_delivery_failures(delivery_results)
             self.storage.mark_pushed(subscription.id, pushed)
         return result
