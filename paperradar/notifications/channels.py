@@ -28,6 +28,7 @@ def send_report(config: dict[str, Any], channels: list[str], title: str, markdow
             results.append(NotificationResult(channel, False, "channel disabled or not configured"))
             continue
         try:
+            message = "sent"
             if channel == "feishu":
                 send_feishu(cfg, title, markdown)
             elif channel == "dingtalk":
@@ -35,7 +36,7 @@ def send_report(config: dict[str, Any], channels: list[str], title: str, markdow
             elif channel == "wework":
                 send_wework(cfg, title, markdown)
             elif channel == "email":
-                send_email(cfg, title, markdown, html)
+                message = send_email(cfg, title, markdown, html)
             elif channel == "generic":
                 send_generic(cfg, title, markdown, html)
             elif channel == "telegram":
@@ -49,7 +50,7 @@ def send_report(config: dict[str, Any], channels: list[str], title: str, markdow
             else:
                 results.append(NotificationResult(channel, False, "unsupported channel"))
                 continue
-            results.append(NotificationResult(channel, True, "sent"))
+            results.append(NotificationResult(channel, True, message))
         except Exception as exc:
             results.append(NotificationResult(channel, False, str(exc)))
     return results
@@ -83,7 +84,7 @@ def send_wework(cfg: dict[str, Any], title: str, markdown: str) -> None:
             post_json(url, {"msgtype": "markdown", "markdown": {"content": truncate(f"**{title}**\n\n{markdown}", 18000)}})
 
 
-def send_email(cfg: dict[str, Any], title: str, markdown: str, html: str) -> None:
+def send_email(cfg: dict[str, Any], title: str, markdown: str, html: str) -> str:
     sender = cfg.get("from")
     password = cfg.get("password")
     recipients = [part.strip() for part in str(cfg.get("to") or "").replace(";", ",").split(",") if part.strip()]
@@ -93,6 +94,19 @@ def send_email(cfg: dict[str, Any], title: str, markdown: str, html: str) -> Non
     port = int(cfg.get("smtp_port") or 587)
     email_markdown = build_email_markdown(markdown)
     email_html = build_email_html(email_markdown)
+    try:
+        deliver_email(sender, password, recipients, server, port, title, email_markdown, email_html)
+        return "sent"
+    except smtplib.SMTPResponseException as exc:
+        if not is_smtp_spam_rejection(exc):
+            raise
+        fallback_markdown = build_email_markdown(markdown, max_papers=1, max_line_length=140, max_chars=1800)
+        fallback_html = build_email_html(fallback_markdown)
+        deliver_email(sender, password, recipients, server, port, title, fallback_markdown, fallback_html)
+        return "sent with compact fallback after SMTP spam rejection"
+
+
+def deliver_email(sender: str, password: str, recipients: list[str], server: str, port: int, title: str, email_markdown: str, email_html: str) -> None:
     message = MIMEMultipart("alternative")
     message["Subject"] = title
     message["From"] = sender
@@ -110,41 +124,147 @@ def send_email(cfg: dict[str, Any], title: str, markdown: str, html: str) -> Non
             smtp.sendmail(sender, recipients, message.as_string())
 
 
-def build_email_markdown(markdown: str, max_lines: int = 40, max_line_length: int = 180) -> str:
-    paper_count = sum(1 for line in markdown.splitlines() if line.strip().startswith("- **"))
+def is_smtp_spam_rejection(exc: smtplib.SMTPResponseException) -> bool:
+    error = exc.smtp_error.decode("utf-8", errors="ignore") if isinstance(exc.smtp_error, bytes) else str(exc.smtp_error)
+    return exc.smtp_code == 554 and "spam" in error.lower()
+
+
+def build_email_markdown(markdown: str, max_papers: int = 3, max_line_length: int = 120, max_chars: int = 2600) -> str:
+    papers = extract_email_papers(markdown)
+    meta_lines = extract_email_meta(markdown)
     lines = [
-        "PaperRadar report generated",
+        "# PaperRadar 论文推送",
         "",
-        f"Recommended paper entries in the full report: {paper_count}",
-        "Open the generated PaperRadar report artifact or Pages site for detailed analysis.",
-        "",
+        f"- 本次推荐：{len(papers)} 篇",
     ]
-    url_pattern = re.compile(r"https?://\S+", re.IGNORECASE)
-    skipped_prefixes = ("DOI", "DOI：", "arXiv", "arXiv：", "链接", "链接：", "Full report")
-    kept_prefixes = ("# ", "## ")
-    kept_terms = ("订阅：", "生成时间：", "报告模块：", "本次没有", "过滤论文数量")
-    blank_pending = False
-    for raw_line in markdown.splitlines():
-        line = raw_line.rstrip()
-        stripped = line.strip()
-        if not stripped:
-            blank_pending = bool(lines and lines[-1])
-            continue
-        normalized = stripped.lstrip("-").strip()
-        if url_pattern.search(stripped) or normalized.startswith(skipped_prefixes):
-            continue
-        if not stripped.startswith(kept_prefixes) and not any(term in stripped for term in kept_terms):
-            continue
-        if len(line) > max_line_length:
-            line = line[: max_line_length - 3].rstrip() + "..."
-        if blank_pending and lines[-1]:
+    lines.extend(meta_lines)
+    lines.append("")
+
+    if not papers:
+        no_match = first_matching_line(markdown, ("本次没有", "没有达到阈值", "没有高相关"))
+        lines.extend(["## 今日结果", no_match or "本次没有达到阈值的推荐论文。", ""])
+    else:
+        lines.extend(["## 优先阅读清单", ""])
+        for index, paper in enumerate(papers[:max_papers], start=1):
+            lines.append(f"{index}. {truncate_line(paper['title'], max_line_length)}")
+            details = paper["details"]
+            assert isinstance(details, list)
+            for detail in select_email_details(details):
+                lines.append(f"   - {truncate_line(detail, max_line_length)}")
             lines.append("")
-        lines.append(line)
-        blank_pending = False
-        if len(lines) >= max_lines:
-            lines.extend(["", "More items were omitted from this email summary. Please open the full PaperRadar report."])
+        remaining = len(papers) - max_papers
+        if remaining > 0:
+            lines.extend([f"还有 {remaining} 篇未放入邮件正文，请查看完整报告。", ""])
+
+    lines.append("完整报告：请查看 GitHub Actions artifact 或已部署的 Pages 报告。")
+    return truncate_email_body("\n".join(lines).strip() + "\n", max_chars)
+
+
+def select_email_details(details: list[str], max_details: int = 3) -> list[str]:
+    priority_prefixes = ("建议：", "理由：", "TL;DR：", "主要贡献：", "阅读前注意：", "与已有文献相关：")
+    selected: list[str] = []
+    for prefix in priority_prefixes:
+        match = next((detail for detail in details if detail.startswith(prefix)), "")
+        if match:
+            selected.append(compact_email_detail(match))
+        if len(selected) >= max_details:
+            return selected
+    for detail in details:
+        if detail not in selected:
+            selected.append(compact_email_detail(detail))
+        if len(selected) >= max_details:
             break
-    return "\n".join(lines).strip() + "\n"
+    return selected
+
+
+def compact_email_detail(detail: str) -> str:
+    if detail.startswith("建议："):
+        return "；".join(detail.split("；")[:2])
+    if detail.startswith(("理由：", "TL;DR：")):
+        return truncate_line(detail, 96)
+    return truncate_line(detail, 110)
+
+
+def extract_email_meta(markdown: str) -> list[str]:
+    kept_terms = ("订阅：", "生成时间：", "报告模块：", "过滤论文数量")
+    result: list[str] = []
+    for raw_line in markdown.splitlines():
+        stripped = raw_line.strip()
+        if any(term in stripped for term in kept_terms):
+            result.append(stripped)
+        if len(result) >= 4:
+            break
+    return result
+
+
+def extract_email_papers(markdown: str) -> list[dict[str, list[str] | str]]:
+    papers: list[dict[str, list[str] | str]] = []
+    current: dict[str, list[str] | str] | None = None
+    seen_titles: set[str] = set()
+    title_pattern = re.compile(r"^- \*\*(.+?)\*\*\s*$")
+
+    def finish_current() -> None:
+        if not current:
+            return
+        title = str(current["title"])
+        normalized = " ".join(title.lower().split())
+        if normalized and normalized not in seen_titles:
+            papers.append(current)
+            seen_titles.add(normalized)
+
+    for raw_line in markdown.splitlines():
+        stripped = raw_line.strip()
+        title_match = title_pattern.match(stripped)
+        if title_match:
+            finish_current()
+            current = {"title": clean_email_text(title_match.group(1)), "details": []}
+            continue
+        if current is None or not raw_line.startswith("  - "):
+            continue
+        detail = clean_email_detail(raw_line[4:])
+        if detail:
+            details = current["details"]
+            assert isinstance(details, list)
+            details.append(detail)
+    finish_current()
+    return papers
+
+
+def clean_email_detail(value: str) -> str:
+    text = clean_email_text(value)
+    if not text:
+        return ""
+    skipped_prefixes = ("DOI", "DOI：", "arXiv", "arXiv：", "链接", "链接：", "Full report")
+    if text.startswith(skipped_prefixes) or re.search(r"https?://\S+", text, re.IGNORECASE):
+        return ""
+    return text
+
+
+def clean_email_text(value: str) -> str:
+    text = re.sub(r"\*\*(.+?)\*\*", r"\1", value)
+    text = re.sub(r"https?://\S+", "", text, flags=re.IGNORECASE)
+    text = " ".join(text.split())
+    return text.strip(" -")
+
+
+def first_matching_line(markdown: str, terms: tuple[str, ...]) -> str:
+    for raw_line in markdown.splitlines():
+        stripped = clean_email_text(raw_line)
+        if any(term in stripped for term in terms):
+            return stripped
+    return ""
+
+
+def truncate_line(value: str, max_length: int) -> str:
+    if len(value) <= max_length:
+        return value
+    return value[: max_length - 3].rstrip() + "..."
+
+
+def truncate_email_body(value: str, max_chars: int) -> str:
+    if len(value) <= max_chars:
+        return value
+    return value[: max_chars - 36].rstrip() + "\n\n[邮件摘要已截断，请查看完整报告。]\n"
 
 
 def build_email_html(markdown: str) -> str:
