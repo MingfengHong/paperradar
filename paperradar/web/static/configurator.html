@@ -1,0 +1,279 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>PaperRadar Configurator</title>
+  <style>
+    :root { color-scheme: light; --bg:#f6f6f4; --fg:#181818; --muted:#62625d; --line:#d9d8d0; --accent:#155f50; --panel:#fffef9; }
+    * { box-sizing: border-box; }
+    body { margin:0; background:var(--bg); color:var(--fg); font-family:Inter,system-ui,-apple-system,"Segoe UI",sans-serif; }
+    main { max-width:1180px; margin:0 auto; padding:28px 18px 56px; }
+    header { display:flex; justify-content:space-between; gap:18px; align-items:flex-end; border-bottom:1px solid var(--line); padding-bottom:18px; margin-bottom:22px; }
+    h1 { margin:0 0 6px; font-size:28px; letter-spacing:0; }
+    h2 { margin:0 0 14px; font-size:18px; letter-spacing:0; }
+    p { margin:0; color:var(--muted); line-height:1.55; }
+    a { color:var(--accent); }
+    .layout { display:grid; grid-template-columns:minmax(320px, 0.86fr) minmax(380px, 1.14fr); gap:18px; align-items:start; }
+    section { border-top:1px solid var(--line); padding-top:18px; margin-top:18px; }
+    section:first-child { margin-top:0; }
+    label { display:block; font-weight:700; font-size:13px; margin:12px 0 6px; }
+    input, textarea, select { width:100%; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--fg); font:inherit; padding:10px 11px; }
+    textarea { min-height:76px; resize:vertical; }
+    .row { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+    .check { display:flex; align-items:center; gap:8px; margin-top:12px; color:var(--fg); font-weight:650; }
+    .check input { width:auto; }
+    .actions { display:flex; flex-wrap:wrap; gap:10px; margin:18px 0; }
+    button { border:1px solid var(--accent); background:var(--accent); color:white; border-radius:6px; padding:10px 14px; font-weight:700; cursor:pointer; }
+    button.secondary { background:transparent; color:var(--accent); }
+    .panel { background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:16px; }
+    .tabs { display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+    .tabs button { padding:8px 10px; background:transparent; color:var(--fg); border-color:var(--line); }
+    .tabs button.active { border-color:var(--accent); color:white; background:var(--accent); }
+    pre { margin:0; padding:14px; overflow:auto; min-height:460px; background:#20231f; color:#f2f0e8; border-radius:6px; font-size:13px; line-height:1.45; white-space:pre; }
+    .hint { font-size:12px; color:var(--muted); margin-top:6px; }
+    @media (max-width: 880px) { header, .layout, .row { display:block; } .panel { margin-top:16px; } }
+  </style>
+</head>
+<body>
+<main>
+  <header>
+    <div>
+      <h1>PaperRadar 配置生成器</h1>
+      <p>静态页面，本地生成配置文本，不上传密钥。</p>
+    </div>
+    <p><a href="index.html">报告列表</a></p>
+  </header>
+
+  <div class="layout">
+    <div>
+      <section>
+        <h2>研究主题</h2>
+        <label for="topicName">主题名称</label>
+        <input id="topicName" value="AI and Organization Research">
+        <label for="question">研究问题 / 阅读目标</label>
+        <textarea id="question">How does artificial intelligence reshape organizations and management?</textarea>
+        <label for="keywords">关键词，逗号分隔</label>
+        <textarea id="keywords">artificial intelligence, organization, management, digital transformation</textarea>
+      </section>
+
+      <section>
+        <h2>订阅</h2>
+        <label class="check"><input id="paperDigest" type="checkbox" checked> 常规论文精选</label>
+        <label class="check"><input id="periodicReview" type="checkbox" checked> 周期综述</label>
+        <label class="check"><input id="arxivDaily" type="checkbox"> arXiv 新文追踪</label>
+        <label for="arxivCategories">arXiv 分类</label>
+        <input id="arxivCategories" value="cs.AI,cs.CL">
+        <div class="row">
+          <div>
+            <label for="maxPapers">每次最多推荐</label>
+            <input id="maxPapers" type="number" min="1" max="50" value="8">
+          </div>
+          <div>
+            <label for="minScore">最低推荐分</label>
+            <input id="minScore" type="number" min="0" max="1" step="0.05" value="0.55">
+          </div>
+        </div>
+      </section>
+
+      <section>
+        <h2>推送与模型</h2>
+        <label for="channel">推送渠道</label>
+        <select id="channel">
+          <option value="email">邮件</option>
+          <option value="feishu">飞书</option>
+          <option value="none">暂不推送</option>
+        </select>
+        <label class="check"><input id="useLlm" type="checkbox" checked> 使用 LLM 生成检索式和分析摘要</label>
+        <label class="check"><input id="useOpenAlex" type="checkbox" checked> 使用 OpenAlex API Key</label>
+        <label class="check"><input id="useZotero" type="checkbox"> 接入 Zotero 文献库</label>
+      </section>
+
+      <div class="actions">
+        <button id="generate">生成配置</button>
+        <button class="secondary" data-download="all">下载当前标签</button>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="tabs">
+        <button class="active" data-tab="topics">topics.yaml</button>
+        <button data-tab="subscriptions">subscriptions.yaml</button>
+        <button data-tab="notifications">notifications.yaml</button>
+        <button data-tab="secrets">GitHub Secrets</button>
+      </div>
+      <pre id="output"></pre>
+      <div class="actions">
+        <button class="secondary" id="copy">复制当前内容</button>
+        <button class="secondary" id="download">下载当前文件</button>
+      </div>
+      <p class="hint">Secrets 不应提交到仓库。把右侧 Secret 名称逐项添加到 GitHub Actions Secrets。</p>
+    </div>
+  </div>
+</main>
+
+<script>
+const state = { tab: "topics", files: {} };
+const $ = (id) => document.getElementById(id);
+const splitCsv = (value) => value.split(",").map((x) => x.trim()).filter(Boolean);
+const esc = (value) => String(value || "").replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+const bool = (id) => $(id).checked;
+
+function yamlList(items, indent) {
+  return items.length ? items.map((item) => `${" ".repeat(indent)}- ${item}`).join("\n") : `${" ".repeat(indent)}[]`;
+}
+
+function channels() {
+  const value = $("channel").value;
+  return value === "none" ? [] : [value];
+}
+
+function buildTopics() {
+  return `topics:
+- id: default
+  name: "${esc($("topicName").value)}"
+  research_question: "${esc($("question").value)}"
+  keywords:
+${yamlList(splitCsv($("keywords").value).map((x) => `"${esc(x)}"`), 2)}
+  exclude_keywords: []
+  venues: []
+  reading_goal: "${esc($("question").value)}"
+  status: active
+  library_tags: []
+`;
+}
+
+function buildSubscriptions() {
+  const reportModules = ["paper_digest"];
+  if (bool("periodicReview")) reportModules.push("periodic_review");
+  const channelLines = channels().map((x) => `  - ${x}`).join("\n");
+  const channelYaml = channelLines ? `  channels:\n${channelLines}` : "  channels: []";
+  const maxPapers = Number($("maxPapers").value || 8);
+  const minScore = Number($("minScore").value || 0.55);
+  const blocks = [];
+  if (bool("paperDigest")) {
+    blocks.push(`- id: daily-paper-digest
+  topic_id: default
+  type: paper
+  enabled: true
+  report_modules:
+${yamlList(reportModules, 2)}
+  schedule: manual
+  max_papers: ${maxPapers}
+  min_score: ${minScore}
+${channelYaml}
+  source:
+    query: ""`);
+  }
+  if (bool("arxivDaily")) {
+    blocks.push(`- id: arxiv-daily
+  topic_id: default
+  type: arxiv
+  enabled: true
+  report_modules:
+  - fresh_updates
+  schedule: manual
+  max_papers: ${maxPapers}
+  min_score: ${minScore}
+${channelYaml}
+  source:
+    categories:
+${yamlList(splitCsv($("arxivCategories").value), 4)}
+    query: ""
+    mode: daily_window`);
+  }
+  return `subscriptions:\n${blocks.join("\n")}\n`;
+}
+
+function buildNotifications() {
+  const channel = $("channel").value;
+  return `channels:
+  feishu:
+    enabled: ${channel === "feishu"}
+    webhook_url: ""
+  email:
+    enabled: ${channel === "email"}
+    from: ""
+    password: ""
+    to: ""
+    smtp_server: ""
+    smtp_port: 587
+  dingtalk:
+    enabled: false
+    webhook_url: ""
+  wework:
+    enabled: false
+    webhook_url: ""
+    msg_type: markdown
+  generic:
+    enabled: false
+    webhook_url: ""
+  telegram:
+    enabled: false
+    bot_token: ""
+    chat_id: ""
+  ntfy:
+    enabled: false
+    server_url: "https://ntfy.sh"
+    topic: ""
+    token: ""
+  bark:
+    enabled: false
+    url: ""
+  slack:
+    enabled: false
+    webhook_url: ""
+`;
+}
+
+function buildSecrets() {
+  const rows = [];
+  if (bool("useLlm")) rows.push("LLM_API_KEY=", "LLM_BASE_URL=https://api.openai.com/v1", "LLM_MODEL=gpt-4o-mini");
+  if (bool("useOpenAlex")) rows.push("OPENALEX_API_KEY=");
+  if ($("channel").value === "email") rows.push("EMAIL_FROM=", "EMAIL_PASSWORD=", "EMAIL_TO=", "EMAIL_SMTP_SERVER=", "EMAIL_SMTP_PORT=");
+  if ($("channel").value === "feishu") rows.push("FEISHU_WEBHOOK_URL=");
+  if (bool("useZotero")) rows.push("ZOTERO_USER_ID=", "ZOTERO_GROUP_ID=", "ZOTERO_API_KEY=");
+  rows.push("", "Optional Variables:", "PAPERRADAR_DEPLOY_PAGES=true", "PAPERRADAR_PUBLIC_BASE_URL=https://<user>.github.io/<repo>");
+  return rows.join("\n") + "\n";
+}
+
+function generate() {
+  state.files = {
+    topics: buildTopics(),
+    subscriptions: buildSubscriptions(),
+    notifications: buildNotifications(),
+    secrets: buildSecrets()
+  };
+  render();
+}
+
+function render() {
+  $("output").textContent = state.files[state.tab] || "";
+  document.querySelectorAll("[data-tab]").forEach((button) => button.classList.toggle("active", button.dataset.tab === state.tab));
+}
+
+function filename() {
+  return state.tab === "secrets" ? "github-secrets.txt" : `${state.tab}.yaml`;
+}
+
+function downloadCurrent() {
+  const blob = new Blob([state.files[state.tab] || ""], {type: "text/plain;charset=utf-8"});
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename();
+  link.click();
+  URL.revokeObjectURL(url);
+}
+
+document.querySelectorAll("[data-tab]").forEach((button) => {
+  button.addEventListener("click", () => { state.tab = button.dataset.tab; render(); });
+});
+$("generate").addEventListener("click", generate);
+$("copy").addEventListener("click", () => navigator.clipboard.writeText(state.files[state.tab] || ""));
+$("download").addEventListener("click", downloadCurrent);
+document.querySelector("[data-download='all']").addEventListener("click", downloadCurrent);
+generate();
+</script>
+</body>
+</html>

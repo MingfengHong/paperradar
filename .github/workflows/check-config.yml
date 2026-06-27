@@ -24,5 +24,16 @@ jobs:
         run: python -m compileall -q paperradar
       - name: Test
         run: python -m pytest -q
+      - name: Setup wizard smoke test
+        run: |
+          mkdir -p /tmp/paperradar-smoke
+          cd /tmp/paperradar-smoke
+          paperradar setup --non-interactive \
+            --topic-name "Template Smoke Test" \
+            --question "What papers are worth reading?" \
+            --keywords "paper recommendation,llm" \
+            --channel none \
+            --enable-arxiv
+          paperradar doctor
       - name: Doctor
         run: paperradar doctor

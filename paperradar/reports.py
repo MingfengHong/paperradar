@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import html
 import re
+import shutil
 from collections import defaultdict
 from pathlib import Path
 
@@ -202,6 +203,7 @@ def save_report(result: RunResult, output_dir: Path) -> tuple[Path, Path]:
     (static_dir / "index.html").write_text(result.report_html, encoding="utf-8")
     (site_reports_dir / f"{result.run_id}.md").write_text(result.report_markdown, encoding="utf-8")
     (site_reports_dir / f"{result.run_id}.html").write_text(result.report_html, encoding="utf-8")
+    write_site_static_assets(site_dir)
     write_site_index(site_dir, site_reports_dir)
     return md_path, html_path
 
@@ -247,6 +249,14 @@ def write_site_index(site_dir: Path, reports_dir: Path) -> None:
     a {{ color: #155f50; }}
   </style>
 </head>
-<body><main><h1>PaperRadar Reports</h1><ul>{items}</ul></main></body></html>"""
+<body><main><h1>PaperRadar Reports</h1><p><a href="configurator.html">Configuration wizard</a></p><ul>{items}</ul></main></body></html>"""
     site_dir.mkdir(parents=True, exist_ok=True)
     (site_dir / "index.html").write_text(index_html, encoding="utf-8")
+
+
+def write_site_static_assets(site_dir: Path) -> None:
+    source = Path(__file__).resolve().parent / "web" / "static" / "configurator.html"
+    if not source.exists():
+        return
+    site_dir.mkdir(parents=True, exist_ok=True)
+    shutil.copyfile(source, site_dir / "configurator.html")

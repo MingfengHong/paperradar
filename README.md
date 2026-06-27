@@ -49,6 +49,7 @@ PaperRadar 把论文推送组织成一条可配置的工作流：
 cd paperradar
 python -m pip install -e .
 paperradar init
+paperradar setup
 paperradar doctor
 paperradar run --no-push
 paperradar web
@@ -60,6 +61,7 @@ Windows PowerShell：
 cd paperradar
 python -m pip install -e .
 paperradar init
+paperradar setup
 paperradar doctor
 paperradar run --no-push
 paperradar web
@@ -92,6 +94,16 @@ Web UI 是轻量管理界面，适合本地配置和手动触发：
 
 表单按“必填、选填、高级设置”分层；凡是能用下拉框或复选框表达的参数，不要求用户手写内部配置值。Web UI 会写入 `config/*.yaml`。本地部署时可以直接在界面保存 webhook/SMTP 等配置；多人共享服务器或 GitHub Actions 部署时，建议把真实密钥放在 `.env`、系统环境变量或 GitHub Secrets 中。
 
+## GitHub Pages 配置生成器
+
+GitHub Pages 是静态托管环境，不能直接写入仓库文件或保存 Secrets。PaperRadar 会在 Pages 站点中生成一个静态配置器：
+
+```text
+https://<GitHub用户名>.github.io/<仓库名>/configurator.html
+```
+
+配置器用于可视化生成 `topics.yaml`、`subscriptions.yaml`、`notifications.yaml` 和 GitHub Secrets 清单。用户复制生成结果到仓库配置文件，并把密钥填入 `Settings -> Secrets and variables -> Actions -> Secrets`。需要直接保存配置、测试通知或手动运行订阅时，使用本地 `paperradar web`。
+
 ## CLI 用法
 
 初始化配置：
@@ -99,6 +111,30 @@ Web UI 是轻量管理界面，适合本地配置和手动触发：
 ```bash
 paperradar init
 ```
+
+一站式初次配置向导：
+
+```bash
+paperradar setup
+```
+
+向导会依次写入研究主题、默认订阅、推送渠道和 `.env`。服务器或自动化脚本可使用非交互模式：
+
+```bash
+paperradar setup --non-interactive \
+  --topic-name "AI and Organization Research" \
+  --question "How does AI reshape organizations and management?" \
+  --keywords "artificial intelligence,organization,management" \
+  --channel email \
+  --email-from "paper@example.com" \
+  --email-to "you@example.com" \
+  --email-smtp-server "smtp.example.com" \
+  --email-smtp-port 465 \
+  --enable-arxiv \
+  --arxiv-categories "cs.AI,cs.CL"
+```
+
+不建议把 SMTP 密码或 API Key 写入 shell 历史。交互模式会用隐藏输入读取密钥；非交互模式下，建议运行后编辑 `.env`，或在 GitHub Actions 中使用同名 Secrets。
 
 诊断配置：
 
@@ -412,14 +448,18 @@ channels:
 
 ### GitHub Actions + Pages
 
-???? `.github/workflows/paperradar.yml`?Fork ? clone ?????????????????????????????????
+PaperRadar 可以作为 GitHub 模板仓库使用。用户点击 **Use this template** 后，只需要改 `config/*.yaml`，再添加 Secrets，就可以让 GitHub Actions 定时推送论文。
 
-1. ??? `Settings -> Pages` ??? `Build and deployment` ? `Source` ?? `GitHub Actions`?
-2. ? `Settings -> Secrets and variables -> Actions -> Secrets` ?????????
-3. ? `Settings -> Secrets and variables -> Actions -> Variables` ????? `PAPERRADAR_PUBLIC_BASE_URL`?
-4. ? `Actions -> PaperRadar -> Run workflow` ???????????? cron ?????
+完整步骤见 [TEMPLATE_SETUP.md](TEMPLATE_SETUP.md)。最短路径如下：
 
-?? Secrets?
+1. 点击仓库右上角 **Use this template -> Create a new repository**。
+2. 修改 `config/topics.yaml`：把默认主题换成自己的研究主题、研究问题和关键词。
+3. 修改 `config/subscriptions.yaml`：保留需要的订阅，启用 `daily-paper-digest` 或 `arxiv-daily`。
+4. 进入 `Settings -> Secrets and variables -> Actions -> Secrets`，添加至少一个推送渠道需要的 Secret。
+5. 如需公开 HTML 报告，进入 `Settings -> Pages`，把 Source 设为 `GitHub Actions`，并在 Variables 里设置 `PAPERRADAR_DEPLOY_PAGES=true`。
+6. 进入 `Actions -> PaperRadar -> Run workflow`，第一次建议 `no_push=true` 先生成报告；确认报告正常后再用 `no_push=false` 真实推送。
+
+常用 Secrets：
 
 ```text
 LLM_API_KEY
@@ -450,34 +490,41 @@ ZOTERO_GROUP_ID
 ZOTERO_API_KEY
 ```
 
-`PAPERRADAR_PUBLIC_BASE_URL` ????workflow ?????
+常用 Variables：
+
+| 变量 | 说明 |
+| --- | --- |
+| `PAPERRADAR_DEPLOY_PAGES` | 设为 `true` 后，schedule 和手动运行会把 `output/site` 发布到 GitHub Pages。 |
+| `PAPERRADAR_PUBLIC_BASE_URL` | 可选。公开报告根地址，留空时 workflow 会按仓库名推断 Pages 地址。 |
+
+`PAPERRADAR_PUBLIC_BASE_URL` 示例：
 
 ```text
-https://<GitHub???>.github.io/<???>
+https://<GitHub用户名>.github.io/<仓库名>
 ```
 
-?????????
+例如：
 
 ```text
 https://mingfenghong.github.io/paperradar
 ```
 
-?? cron?
+默认定时任务：
 
 ```yaml
 - cron: "0 23 * * *"
 ```
 
-???? UTC 23:00??????? 07:00 ???????? `.github/workflows/paperradar.yml` ????????????
+GitHub Actions 的 cron 使用 UTC。`0 23 * * *` 对应北京时间每天 07:00。需要改推送时间时，编辑 `.github/workflows/paperradar.yml` 的 `schedule`。
 
-???????
+运行输出：
 
 ```text
-output/reports/      # Actions artifact ?? Markdown/HTML ??
-output/site/         # ??? GitHub Pages ?????
+output/reports/      # Actions artifact 中的 Markdown/HTML 报告
+output/site/         # GitHub Pages 发布目录
 ```
 
-????? workflow ???
+查看当前 workflow 模板：
 
 ```bash
 paperradar deploy github-actions-template

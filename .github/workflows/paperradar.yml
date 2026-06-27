@@ -19,6 +19,10 @@ on:
         description: "Deploy output/site to GitHub Pages"
         required: false
         default: "false"
+      subscription:
+        description: "Optional subscription id to run, for example daily-paper-digest"
+        required: false
+        default: ""
   schedule:
     - cron: "0 23 * * *"
 
@@ -34,6 +38,7 @@ jobs:
       contents: read
     env:
       NO_PUSH: ${{ github.event_name == 'workflow_dispatch' && inputs.no_push || github.event_name == 'push' && 'true' || 'false' }}
+      PAPERRADAR_SUBSCRIPTION: ${{ github.event_name == 'workflow_dispatch' && inputs.subscription || '' }}
       PAPERRADAR_PUBLIC_BASE_URL_OVERRIDE: ${{ vars.PAPERRADAR_PUBLIC_BASE_URL }}
       LLM_API_KEY: ${{ secrets.LLM_API_KEY }}
       LLM_BASE_URL: ${{ secrets.LLM_BASE_URL }}
@@ -87,10 +92,15 @@ jobs:
         run: paperradar doctor
       - name: Run
         run: |
-          if [ "$NO_PUSH" = "true" ]; then
-            paperradar run --no-push
+          if [ -n "$PAPERRADAR_SUBSCRIPTION" ]; then
+            TARGET_ARGS="--subscription $PAPERRADAR_SUBSCRIPTION"
           else
-            paperradar run
+            TARGET_ARGS=""
+          fi
+          if [ "$NO_PUSH" = "true" ]; then
+            paperradar run $TARGET_ARGS --no-push
+          else
+            paperradar run $TARGET_ARGS
           fi
       - name: Upload reports
         uses: actions/upload-artifact@v4

@@ -40,6 +40,9 @@ def test_save_report_builds_pages_site(tmp_path) -> None:
     save_report(result, tmp_path)
 
     assert (tmp_path / "site" / "index.html").exists()
+    assert (tmp_path / "site" / "configurator.html").exists()
     assert (tmp_path / "site" / "reports" / "run-1.html").exists()
     assert "https://example.github.io/paperradar/reports/run-1.html" in (tmp_path / "site" / "reports" / "run-1.html").read_text(encoding="utf-8")
-    assert "reports/run-1.html" in (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
+    site_index = (tmp_path / "site" / "index.html").read_text(encoding="utf-8")
+    assert "reports/run-1.html" in site_index
+    assert "configurator.html" in site_index
